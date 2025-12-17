@@ -1,0 +1,5 @@
+{
+  "name": "中行汇率通 (BOC Rates)",
+  "description": "实时查询中国银行外汇牌价（现汇卖出价），支持美元、英镑、欧元、港币、日元。",
+  "requestFramePermissions": []
+}
