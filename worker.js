@@ -54,10 +54,21 @@ export default {
 
       const html = await response.text();
       
-      // 从表格中解析数据
-      const tableMatch = html.match(/<table[^>]*>([\s\S]*?)<\/table>/);
-      if (!tableMatch) {
+      // 找到所有表格，取数据表格（通常是最大的那个）
+      const allTables = html.match(/<table[^>]*>[\s\S]*?<\/table>/g);
+      if (!allTables || allTables.length === 0) {
         throw new Error("无法从BOC网站提取数据表格");
+      }
+      
+      // 找到最大的表格（数据表格）
+      let tableContent = '';
+      let maxLength = 0;
+      for (const table of allTables) {
+        const match = table.match(/<table[^>]*>([\s\S]*?)<\/table>/);
+        if (match && match[1].length > maxLength) {
+          maxLength = match[1].length;
+          tableContent = match[1];
+        }
       }
 
       // 提取更新时间
@@ -76,12 +87,12 @@ export default {
       };
 
       // 解析表格行
-      const rates = [];
-      const rowMatches = tableMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
+      const ratesMap = {};
+      const rowMatches = tableContent.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
       
       for (const rowMatch of rowMatches) {
         const row = rowMatch[1];
-        const cells = Array.from(row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)).map(m => m[1].trim());
+        const cells = Array.from(row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)).map(m => m[1].replace(/<[^>]*>/g, '').trim());
         
         if (cells.length < 5) continue;
         
@@ -93,8 +104,13 @@ export default {
         // 现汇卖出价 (第4列，索引3)
         const price = cells[3] || '0';
         
-        rates.push({ code, name, price });
+        ratesMap[code] = { code, name, price };
       }
+
+      // 按照指定顺序返回货币
+      const rates = TARGET_CURRENCIES
+        .filter(code => ratesMap[code])
+        .map(code => ratesMap[code]);
 
       const result = {
         updateTime,
