@@ -4,8 +4,8 @@ import { ExchangeRate, AppError } from './types';
 import { RateCard } from './components/RateCard';
 import { Header } from './components/Header';
 
-// 只显示这些目标货币
-const TARGET_CURRENCIES = ["GBP", "EUR", "USD", "HKD", "JPY", "AUD", "CAD"];
+// 只显示这些目标货币 (7种：英镑、美元、欧元、港元、加元、澳元、日元)
+const TARGET_CURRENCIES = ["GBP", "USD", "EUR", "HKD", "CAD", "AUD", "JPY"];
 
 const App: React.FC = () => {
   const [rates, setRates] = useState<ExchangeRate[]>([]);

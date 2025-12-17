@@ -8,9 +8,9 @@ import { ExchangeData, ExchangeRate } from "../types";
 const MY_WORKER_PROXY = "https://bocrateproxy.1572367688.workers.dev/";
 
 /**
- * 前端关注的目标货币
+ * 前端关注的目标货币 (7种：英镑、美元、欧元、港元、加元、澳元、日元)
  */
-const TARGET_CURRENCIES = ["GBP", "EUR", "USD", "HKD", "JPY", "AUD", "CAD"];
+const TARGET_CURRENCIES = ["GBP", "USD", "EUR", "HKD", "CAD", "AUD", "JPY"];
 
 /**
  * 主请求函数
