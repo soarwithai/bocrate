@@ -1,6 +1,6 @@
 import { ExchangeData, ExchangeRate } from "../types";
 
-const BOC_TARGET_URL = "https://www.boc.cn/sourcedb/whpj/enindex_1619.html";
+const BOC_TARGET_URL = "https://bocrateproxy.1572367688.workers.dev/";
 
 // 两个常用的免费代理，如果第一个失败会自动尝试第二个
 const PROXY_LIST = [
