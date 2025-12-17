@@ -1,8 +1,11 @@
-import { CapacitorHttp, HttpResponse } from '@capacitor/core';
 import { ExchangeData, ExchangeRate } from "../types";
 
-// 目标网页（英文版）
+// 1. 目标网页
 const BOC_TARGET_URL = "https://www.boc.cn/sourcedb/whpj/enindex_1619.html";
+
+// 2. 免费的 CORS 代理服务（专门解决浏览器跨域问题）
+// AllOrigins 会将目标网页包装成 JSON 返回
+const CORS_PROXY = "https://api.allorigins.win/get?url=";
 
 const TARGET_CURRENCIES: Record<string, string> = {
   GBP: "英镑",
@@ -14,68 +17,35 @@ const TARGET_CURRENCIES: Record<string, string> = {
   CAD: "加拿大元",
 };
 
-export const PROXY_BASE = ""; // 可填写 Cloudflare Worker URL，例如: "https://your-worker.example.workers.dev"
-
 export const fetchBOCRates = async (): Promise<ExchangeData> => {
-  // 添加时间戳防止缓存
-  const timestamp = new Date().getTime();
-  const urlWithCacheBust = `${BOC_TARGET_URL}?t=${timestamp}`;
-
-  console.log('开始获取汇率数据...', urlWithCacheBust);
-
-  // 先尝试 Capacitor 原生 HTTP（在移动/Capacitor 环境中可用）
-  if (typeof CapacitorHttp !== 'undefined' && (CapacitorHttp as any).get) {
-    try {
-      const response: HttpResponse = await CapacitorHttp.get({
-        url: urlWithCacheBust,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        },
-      });
-
-      console.log('CapacitorHttp 响应状态:', response.status);
-
-      if (response && response.status === 200 && typeof response.data === 'string') {
-        console.log('收到HTML数据（CapacitorHttp），长度:', response.data.length);
-        return parseBOCHtml(response.data);
-      }
-      console.warn('CapacitorHttp 未返回可用 HTML，回退到浏览器 fetch');
-    } catch (e: any) {
-      console.warn('CapacitorHttp 请求失败，回退到浏览器 fetch:', e?.message || e);
-    }
-  }
-
-  // 浏览器环境回退：直接使用 fetch（注意目标站点可能禁止 CORS）
   try {
-    const target = PROXY_BASE ? `${PROXY_BASE}?url=${encodeURIComponent(BOC_TARGET_URL)}&t=${timestamp}` : urlWithCacheBust;
+    const timestamp = new Date().getTime();
+    // 构造带时间戳的原始 URL
+    const targetUrl = `${BOC_TARGET_URL}?t=${timestamp}`;
+    // 构造代理 URL：将原始 URL 进行编码，防止特殊字符导致请求失败
+    const finalUrl = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
 
-    const resp = await fetch(target, {
-      method: 'GET',
-      headers: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (Browser)'
-      },
-      mode: 'cors',
-    });
+    console.log('正在通过代理获取数据:', finalUrl);
 
-    console.log('fetch 响应状态:', resp.status);
+    const response = await fetch(finalUrl);
 
-    if (!resp.ok) {
-      throw new Error(`Fetch 请求失败，状态码: ${resp.status}`);
+    if (!response.ok) {
+      throw new Error(`代理请求失败，状态码: ${response.status}`);
     }
 
-    const html = await resp.text();
-    if (!html || typeof html !== 'string') throw new Error('未收到有效的HTML响应 (fetch)');
+    const data = await response.json();
 
-    console.log('收到HTML数据（fetch），长度:', html.length);
-    return parseBOCHtml(html);
+    // AllOrigins 返回的 JSON 结构中，网页 HTML 存在 contents 字段里
+    if (!data || !data.contents) {
+      throw new Error("代理服务器返回数据格式不正确");
+    }
+
+    console.log('成功获取 HTML 数据，开始解析...');
+    return parseBOCHtml(data.contents);
+
   } catch (error: any) {
     console.error('获取汇率失败:', error);
-    const hint = '如果是在浏览器中运行，目标网站可能阻止跨域请求(CORS)。建议部署 Cloudflare Worker 代理并将其地址填入 PROXY_BASE，或在服务器端代理请求。';
-    throw new Error(`${error?.message || '网络请求失败'} — ${hint}`);
+    throw new Error(`数据加载失败: ${error?.message || '未知错误'}`);
   }
 };
 
@@ -88,15 +58,15 @@ const parseBOCHtml = (html: string): ExchangeData => {
   const timeMatch = html.match(timeRegex);
   if (timeMatch && timeMatch[1]) updateTime = timeMatch[1];
 
-  // 2. 提取汇率
+  // 2. 提取汇率 (针对中行英文版网页结构)
   Object.keys(TARGET_CURRENCIES).forEach((code) => {
     const name = TARGET_CURRENCIES[code];
 
     const regexStr = 
-      `<td[^>]*>\\s*${code}\\s*<\\/td>` +
-      `\\s*<td[^>]*>[\\s\\S]*?<\\/td>` +
-      `\\s*<td[^>]*>[\\s\\S]*?<\\/td>` +
-      `\\s*<td[^>]*>([\\s\\S]*?)<\\/td>`;
+      `<td[^>]*>\\s*${code}\\s*<\\/td>` +  // 货币代码列
+      `\\s*<td[^>]*>[\\s\\S]*?<\\/td>` +    // 买入价列
+      `\\s*<td[^>]*>[\\s\\S]*?<\\/td>` +    // 钞买价列
+      `\\s*<td[^>]*>([\\s\\S]*?)<\\/td>`;   // 卖出价列 (捕获此值)
 
     const regex = new RegExp(regexStr, "i");
     const match = html.match(regex);
@@ -110,10 +80,10 @@ const parseBOCHtml = (html: string): ExchangeData => {
   });
 
   if (rates.length === 0) {
-    throw new Error("解析失败：未能提取汇率数据，网页结构可能已变");
+    throw new Error("解析失败：未能提取汇率数据，请检查网络或网页结构");
   }
 
-  // 排序（将新增货币放在末尾）
+  // 排序
   const sortOrder = ["GBP", "EUR", "USD", "HKD", "JPY", "AUD", "CAD"];
   rates.sort((a, b) => sortOrder.indexOf(a.code) - sortOrder.indexOf(b.code));
 
